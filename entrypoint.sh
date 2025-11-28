@@ -1,34 +1,27 @@
 #!/bin/bash
 set -e
 
-cd /home/actions
+cd /home/runner
+echo "Fixing permissions for /home/runner/_work..."
+mkdir -p /home/runner/_work
+chown -R runner:runner /home/runner/_work
 
-if [ -z "$GITHUB_URL" ] || [ -z "$GITHUB_PAT" ] || [ -z "$RUNNER_NAME" ]; then
-  echo "Missing required environment variables!" 
-  exit 1
-fi
+# Use REPO like "username/repo"
+TOKEN_URL="https://api.github.com/repos/${REPO}/actions/runners/registration-token"
 
-cleanup() {
-  echo "Removing runner..."
-  ./config.sh remove --token "$RUNNER_TOKEN"
-  exit 0
-}
+echo "Requesting registration token for $REPO..."
+RUNNER_TOKEN=$(curl -s -X POST \
+  -H "Authorization: token ${GITHUB_PAT}" \
+  "${TOKEN_URL}" | jq -r .token)
 
-trap cleanup SIGINT SIGTERM
-
-# Get registration token
-echo "Requesting registration token..."
-RUNNER_TOKEN=$(curl -sX POST -H "Authorization: token ${GITHUB_PAT}" \
-  ${GITHUB_URL}/actions/runners/registration-token | jq -r .token)
-
-# Configure runner
-./config.sh \
-  --url "${GITHUB_URL}" \
+echo "Registering runner: $RUNNER_NAME"
+./config.sh --unattended \
+  --url "https://github.com/${REPO}" \
   --token "${RUNNER_TOKEN}" \
   --name "${RUNNER_NAME}" \
-  --work "_work" \
-  --unattended \
+  --labels self-hosted,docker,terraform \
+  --work _work \
   --replace
 
-# Start runner
-./run.sh
+echo "Starting runner...."
+exec ./run.sh
